@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Forge</title>
+  <meta name="description" content="Personal workout planner and tracker">
+  <meta name="theme-color" content="#0e1013">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Forge">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main id="app"></main>
+
+  <div id="resume-bar" hidden></div>
+
+  <nav id="tabs" aria-label="Main">
+    <a href="#/today" data-tab="today"><span class="ti">◎</span>Today</a>
+    <a href="#/recovery" data-tab="recovery"><span class="ti">♥</span>Recovery</a>
+    <a href="#/history" data-tab="history"><span class="ti">☰</span>History</a>
+    <a href="#/stats" data-tab="stats"><span class="ti">▲</span>Stats</a>
+    <a href="#/settings" data-tab="settings"><span class="ti">⚙</span>Settings</a>
+  </nav>
+
+  <div id="sheet" aria-hidden="true">
+    <div class="sheet-backdrop" data-action="close-sheet"></div>
+    <div class="sheet-body" role="dialog" aria-modal="true"></div>
+  </div>
+
+  <div id="toast" role="status" aria-live="polite"></div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
