@@ -51,6 +51,23 @@ powershell -NoProfile -ExecutionPolicy Bypass -File serve.ps1
 Then open http://localhost:8080. The service worker (offline mode) is skipped on localhost so that
 your edits show up right away.
 
+## Live site
+
+Hosted on GitHub Pages at **https://z4tech.github.io/forge-workout/** from the `main` branch of
+https://github.com/Z4Tech/forge-workout.
+
+To publish a change:
+
+1. Bump `CACHE` in `sw.js` (for example `forge-v2` → `forge-v3`) so installed copies pick up the new files.
+2. Commit and push:
+   ```bash
+   git add -A
+   git commit -m "Describe the change"
+   git push
+   ```
+3. Pages redeploys in about a minute. Installed apps get the update the next time they're
+   opened, and show it after one more reopen.
+
 ## Put it on your phone
 
 Service workers and "Add to Home Screen" need HTTPS, so host the folder on any free static host:
