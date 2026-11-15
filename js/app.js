@@ -1,5 +1,6 @@
 import { state, save, replaceAll, exportData, mergeInto, touchPrefs } from './store.js';
 import * as Sync from './sync.js';
+import { parseGravl } from './gravl.js';
 import { EXERCISES, EX, MUSCLES, EQUIPMENT, MUSCLE_NAME, EQUIP_NAME } from './exercises.js';
 import * as E from './engine.js';
 import { bodySvg } from './body.js';
@@ -210,7 +211,7 @@ function exCard(e, i) {
       <div class="ex-tools"><button class="icon-btn" data-action="swap" data-target="active" data-i="${i}" aria-label="Swap exercise">⇄</button><button class="icon-btn" data-action="remove-active" data-i="${i}" aria-label="Remove exercise">✕</button></div>
     </div>
     ${e.note ? `<p class="hint hint-${e.kind}">${esc(e.note)}</p>` : ''}
-    <table class="sets"><thead><tr><th>Set</th><th>Last</th><th>${ex.bw ? '+' + u : u}</th><th>${ex.timed ? 'Sec' : 'Reps'}</th><th></th></tr></thead><tbody>${rows}</tbody></table>
+    <table class="sets"><thead><tr><th>Set</th><th>Last</th><th>${ex.assist ? 'Assist ' + u : ex.bw ? '+' + u : u}</th><th>${ex.timed ? 'Sec' : 'Reps'}</th><th></th></tr></thead><tbody>${rows}</tbody></table>
     <div class="row gap"><button class="btn small ghost" data-action="add-set" data-i="${i}">+ Set</button>${e.sets.length > 1 ? `<button class="btn small ghost" data-action="del-set" data-i="${i}">− Set</button>` : ''}</div>
   </section>`;
 }
@@ -406,7 +407,7 @@ function workoutSheet(w, prs = [], fresh = false) {
       const ex = EX[e.exId];
       if (!ex) return '';
       return `<div class="detail-ex"><b>${esc(ex.name)}${prSet.has(e.exId) ? ' <span class="tag pr">PR</span>' : ''}</b>
-        <div class="set-pills">${e.sets.map((s) => `<span>${s.w ? `${E.fmtNum(E.toDisp(s.w, u))}${u} × ` : ''}${s.r}${ex.timed ? 's' : ''}</span>`).join('')}</div></div>`;
+        <div class="set-pills">${e.sets.map((s) => `<span>${s.w ? `${ex.assist ? '−' : ''}${E.fmtNum(E.toDisp(s.w, u))}${u} × ` : ''}${s.r}${ex.timed ? 's' : ''}</span>`).join('')}</div></div>`;
     }).join('')}
     ${fresh ? '<button class="btn primary block" data-action="close-sheet">Done</button>' : `<button class="btn danger-ghost block" data-action="delete-workout" data-id="${w.id}">Delete workout</button>`}`;
 }
@@ -485,7 +486,7 @@ function viewStats() {
   if (!statEx || !counts[statEx]) statEx = exIds[0];
   const ex = EX[statEx];
   const sess = E.sessionsFor(statEx, ws).reverse();
-  const timedOrBw = sess.every((s) => s.sets.every((x) => !x.w));
+  const timedOrBw = ex.timed || ex.assist || sess.every((s) => s.sets.every((x) => !x.w));
   const fmtV = (v) => (timedOrBw ? `${Math.round(v)} ${unitLabel(ex)}` : `${E.fmtNum(v)} ${u}`);
   const points = sess.slice(-20).map((s) => ({
     label: new Date(s.w.end).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
@@ -530,6 +531,11 @@ function viewSettings() {
         <button class="btn ghost" data-action="export-csv">Sets (.csv)</button>
         <label class="btn ghost">Import backup<input type="file" id="import-file" accept="application/json,.json" hidden></label>
       </div>
+    </section>
+    <section class="card"><h3>Move from Gravl</h3>
+      <p class="muted small">In Gravl, go to Profile → Export Data and save the CSV, then pick it here. You'll see a preview before anything is saved.
+        Strength sets are imported. Cardio and warm-up sets are skipped. Importing the same file twice won't create duplicates.</p>
+      <label class="btn ghost">Import Gravl CSV<input type="file" id="gravl-file" accept=".csv,text/csv" hidden></label>
       <button class="btn danger-ghost block" data-action="reset">Erase data on this device</button>
     </section>`;
 }
@@ -593,6 +599,57 @@ function exportCsv() {
     }
   }
   download(`forge-sets-${E.todayKey()}.csv`, rows.map((r) => r.map(q).join(',')).join('\r\n'), 'text/csv');
+}
+
+/* ---------- Gravl import ---------- */
+
+let gravlPending = null;
+
+function gravlPreview(res) {
+  const { workouts, stats, lb } = res;
+  const have = new Set(state.workouts.map((w) => w.id));
+  const fresh = workouts.filter((w) => !have.has(w.id) && !state.deleted[w.id]);
+  const fmtD = (t) => new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  const exCount = new Set(workouts.flatMap((w) => w.exercises.map((e) => e.exId))).size;
+  const usedEquip = new Set(workouts.flatMap((w) => w.exercises.flatMap((e) => EX[e.exId].equip)));
+  const missingEquip = [...usedEquip].filter((q) => !state.profile.equipment.includes(q));
+  const unknown = Object.entries(stats.unknown).sort((a, b) => b[1] - a[1]);
+  const fileUnits = lb ? 'lb' : 'kg';
+  gravlPending = { fresh, missingEquip, fileUnits };
+
+  return `<div class="sheet-head"><div><p class="eyebrow">Import preview</p><h2>Gravl history</h2></div><button class="icon-btn" data-action="close-sheet" aria-label="Close">✕</button></div>
+    ${workouts.length ? `<p class="small">${fmtD(workouts[0].start)} – ${fmtD(workouts[workouts.length - 1].start)}</p>` : ''}
+    <div class="tiles">
+      <div class="tile"><b>${fresh.length}</b><small>New workouts</small></div>
+      <div class="tile"><b>${stats.sets}</b><small>Sets</small></div>
+      <div class="tile"><b>${exCount}</b><small>Exercises</small></div>
+    </div>
+    <ul class="plain small import-notes">
+      ${workouts.length - fresh.length ? `<li>${workouts.length - fresh.length} workouts already imported, so they'll be skipped</li>` : ''}
+      ${stats.cardio ? `<li>${stats.cardio} cardio entries skipped (walking, running…)</li>` : ''}
+      ${stats.warmup ? `<li>${stats.warmup} warm-up sets skipped</li>` : ''}
+      ${unknown.length ? `<li class="warn">Not recognised, skipped: ${unknown.map(([n, c]) => `${esc(n)} (${c})`).join(', ')}</li>` : '<li>Every exercise matched Forge’s library</li>'}
+    </ul>
+    ${fileUnits !== U() ? `<label class="toggle opt"><input type="checkbox" id="gravl-units" checked> Switch Forge to ${fileUnits} (what Gravl used)</label>` : ''}
+    ${missingEquip.length ? `<label class="toggle opt"><input type="checkbox" id="gravl-equip" checked> Add equipment you used in Gravl: ${missingEquip.map((q) => EQUIP_NAME[q]).join(', ')}</label>` : ''}
+    <button class="btn primary block" data-action="gravl-confirm" ${fresh.length ? '' : 'disabled'}>${fresh.length ? `Import ${fresh.length} workouts` : 'Nothing new to import'}</button>`;
+}
+
+function gravlConfirm() {
+  const p = gravlPending;
+  if (!p) return;
+  mergeInto({ workouts: p.fresh, deleted: {} });
+  let prefs = false;
+  if (document.getElementById('gravl-units')?.checked) { state.profile.units = p.fileUnits; prefs = true; }
+  if (document.getElementById('gravl-equip')?.checked) { state.profile.equipment = [...state.profile.equipment, ...p.missingEquip]; prefs = true; }
+  if (prefs) touchPrefs();
+  state.draft = null;
+  save();
+  Sync.scheduleSync();
+  gravlPending = null;
+  closeSheet();
+  toast(`Imported ${p.fresh.length} workouts from Gravl`);
+  go('history');
 }
 
 function download(name, text, type) {
@@ -701,6 +758,7 @@ const actions = {
     go('setup');
   },
   'open-sync': () => openSheet(`<div class="sheet-head"><h2>Restore with sync</h2><button class="icon-btn" data-action="close-sheet" aria-label="Close">✕</button></div><div id="sync-card">${syncCard()}</div>`),
+  'gravl-confirm': gravlConfirm,
   'sync-now': () => Sync.syncNow(),
   'sync-disconnect': () => {
     if (!confirm('Stop syncing on this device? Data here and in the gist are both kept.')) return;
@@ -746,6 +804,16 @@ document.addEventListener('change', async (ev) => {
       if (inp) inp.value = t.value;
     });
     save();
+  }
+  if (t.id === 'gravl-file' && t.files[0]) {
+    try {
+      openSheet(gravlPreview(parseGravl(await t.files[0].text())));
+    } catch (err) {
+      alert('Could not read the Gravl file: ' + err.message);
+    } finally {
+      t.value = '';
+    }
+    return;
   }
   if (t.id === 'import-file' && t.files[0]) {
     try {

@@ -1,8 +1,8 @@
 // Offline support: serve from cache, refresh the cache in the background.
-const CACHE = 'forge-v2';
+const CACHE = 'forge-v3';
 const SHELL = [
   './', 'index.html', 'styles.css', 'manifest.webmanifest',
-  'js/app.js', 'js/store.js', 'js/engine.js', 'js/exercises.js', 'js/body.js', 'js/sync.js',
+  'js/app.js', 'js/store.js', 'js/engine.js', 'js/exercises.js', 'js/body.js', 'js/sync.js', 'js/gravl.js',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',
 ];
 

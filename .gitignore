@@ -1,4 +1,8 @@
 .claude/
+# personal exports (Gravl CSV, backups) — never commit these
+import/
+*.csv
+forge-backup-*.json
 *.log
 Thumbs.db
 desktop.ini

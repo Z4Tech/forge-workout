@@ -393,6 +393,12 @@ select.search { margin-bottom: 8px; }
 .plain { list-style: none; padding: 0; margin: 0; }
 .plain li { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; }
 
+.import-notes { margin: 4px 0 12px; color: var(--muted); }
+.import-notes li { display: list-item; list-style: disc inside; padding: 2px 0; }
+.import-notes .warn { color: var(--danger); }
+.toggle.opt { margin: 10px 0; color: var(--text); align-items: flex-start; }
+.toggle.opt input { margin-top: 3px; }
+
 .steps { padding-left: 20px; margin: 10px 0 12px; }
 .steps li + li { margin-top: 6px; }
 .steps a, .sheet-body a:not(.btn) { color: var(--accent); }

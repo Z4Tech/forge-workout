@@ -152,7 +152,10 @@ export function suggest(exId, rx, workouts, units) {
   }
 
   const sets = hist[0].sets;
-  const top = topOf(sets);
+  // For assisted moves the working set is the one with the LEAST assistance.
+  const top = ex.assist && sets.some((s) => s.w > 0)
+    ? Math.min(...sets.filter((s) => s.w > 0).map((s) => s.w))
+    : topOf(sets);
 
   if (top <= 0) {
     // Bodyweight / timed: progress by reps or seconds.
@@ -172,6 +175,24 @@ export function suggest(exId, rx, workouts, units) {
   const dTop = toDisp(top, units);
   const step = units === 'kg' ? 0.5 : 2.5;
   const minR = minRepsAt(sets, top);
+
+  if (ex.assist) {
+    // Weight is assistance: progress by taking assistance away.
+    const inc = units === 'kg' ? 2.5 : 5;
+    const minR = Math.min(...sets.filter((s) => (s.w || 0) <= top + 0.01).map((s) => s.r || 0));
+    if (minR >= rx.max) {
+      const next = Math.max(0, roundTo(dTop - inc, step));
+      return next > 0
+        ? { w: fromDisp(next, units), r: rx.min, kind: 'up', note: `All sets hit ${rx.max} reps — less assistance: ${fmtNum(next)} ${units}.` }
+        : { w: null, r: rx.min, kind: 'up', note: 'Ready to try it with no assistance!' };
+    }
+    if (minR < rx.min) {
+      const next = roundTo(dTop + inc, step);
+      return { w: fromDisp(next, units), r: rx.min, kind: 'hold', note: `Missed the target — a bit more assistance (${fmtNum(next)} ${units}).` };
+    }
+    const r = Math.min(rx.max, minR + 1);
+    return { w: top, r, kind: 'reps', note: `Same assistance, one more rep: ${minR} → ${r}.` };
+  }
 
   if (minR >= rx.max) {
     const next = roundTo(dTop + increment(ex, units), step);
@@ -234,7 +255,12 @@ export function generate(profile, workouts, excluded = [], forceType = null, now
   const pool = EXERCISES.filter((e) => !excluded.includes(e.id) && e.equip.every((q) => equip.has(q)));
   const loadable = profile.equipment.some((q) => ['barbell', 'dumbbell', 'machine', 'cable', 'kettlebell'].includes(q));
   const n = Math.max(3, Math.min(9, Math.round(profile.minutes / (profile.goal === 'strength' ? 12 : 8.5))));
-  const known = new Set(workouts.flatMap((w) => w.exercises.map((e) => e.exId)));
+  // How often each exercise was done in the last ~4 months: favour your staples.
+  const known = {};
+  for (const w of workouts) {
+    if (now - w.end > 120 * DAY) continue;
+    for (const id of new Set(w.exercises.map((e) => e.exId))) known[id] = (known[id] || 0) + 1;
+  }
 
   // Skip muscles that are still fatigued, unless that leaves too little to train.
   let muscles = split.muscles.filter((m) => rec[m].pct >= 50);
@@ -250,7 +276,7 @@ export function generate(profile, workouts, excluded = [], forceType = null, now
       let s = Math.random() * 1.5;
       if (pass === 0 && e.kind === 'compound') s += chosen.length < 3 ? 4 : 1.5;
       if (pass > 0 && e.kind === 'isolation') s += 2;
-      if (known.has(e.id)) s += 1.5; // stick with lifts you're progressing on
+      if (known[e.id]) s += Math.min(4, 1 + Math.log2(known[e.id])); // stick with lifts you're progressing on
       if (e.bw && loadable && !e.timed) s -= 1;
       s -= e.secondary.filter((x) => rec[x].pct < 35).length * 1.5;
       s -= e.primary.filter((x) => x !== m && covered[x]).length * 1.5;
@@ -291,7 +317,7 @@ export const e1rm = (w, r) => (!w || !r ? 0 : r === 1 ? w : w * (1 + r / 30));
 export function volume(workout) {
   let v = 0;
   for (const e of workout.exercises) {
-    if (EX[e.exId]?.timed) continue;
+    if (EX[e.exId]?.timed || EX[e.exId]?.assist) continue;
     for (const s of doneSets(e)) v += (s.w || 0) * (s.r || 0);
   }
   return v;
@@ -307,6 +333,7 @@ export function bestE1rm(sets) {
 export function findPRs(workout, prior) {
   const prs = [];
   for (const e of workout.exercises) {
+    if (EX[e.exId]?.assist || EX[e.exId]?.timed) continue;
     const before = sessionsFor(e.exId, prior.filter((w) => w.end < workout.end));
     if (!before.length) continue;
     const now = bestE1rm(doneSets(e));
